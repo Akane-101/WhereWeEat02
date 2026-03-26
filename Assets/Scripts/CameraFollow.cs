@@ -18,9 +18,13 @@ public class CameraFollowX : MonoBehaviour
             transform.position.z
         );
 
-        if(transform.position.x > 9.1f)
+        if(transform.position.x > 5.9f)
         {
-            transform.position = new Vector3(9.1f, 0, -10f);
+            transform.position = new Vector3(5.9f, 0, -10f);
+        }
+        if (transform.position.x < -5.9f)
+        {
+            transform.position = new Vector3(-5.9f, 0, -10f);
         }
     }
 }

@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 
@@ -15,37 +14,34 @@ public class DialogueManager : MonoBehaviour
     public static DialogueManager Instance;
     public bool IsTalking => isTalking;
 
+    [Header("UI")]
     public GameObject dialoguePanel;
     public TextMeshProUGUI dialogueText;
     public TextMeshProUGUI speakerText;
     public GameObject continueHint;
 
+    [Header("打字速度")]
+    public float typingSpeed = 0.03f;
+
     private DialogueLine[] lines;
     private int index;
     private bool isTalking = false;
     private bool isTyping = false;
-
-    public float typingSpeed = 0.03f;
-
     private Coroutine blinkCoroutine;
 
     void Awake()
     {
-        if (Instance == null)
-            Instance = this;
-        else
-            Destroy(gameObject);
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
     }
-
     void Start()
     {
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
-
         if (continueHint != null)
-            continueHint.SetActive(false);
+        {
+            continueHint.SetActive(true);
+            StartCoroutine(BlinkHint()); // 一开始就闪烁
+        }
     }
-
     void Update()
     {
         if (isTalking && Input.GetKeyDown(KeyCode.Space))
@@ -53,7 +49,6 @@ public class DialogueManager : MonoBehaviour
             if (isTyping)
             {
                 StopAllCoroutines();
-
                 dialogueText.text = lines[index].content;
                 isTyping = false;
             }
@@ -66,25 +61,13 @@ public class DialogueManager : MonoBehaviour
 
     public void StartDialogue(DialogueLine[] dialogueLines)
     {
-        if (dialogueLines == null || dialogueLines.Length == 0)
-            return;
+        if (dialogueLines == null || dialogueLines.Length == 0) return;
 
         lines = dialogueLines;
         index = 0;
         isTalking = true;
 
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(true);
-
-        if (continueHint != null)
-        {
-            continueHint.SetActive(true);
-
-            if (blinkCoroutine != null)
-                StopCoroutine(blinkCoroutine);
-
-            blinkCoroutine = StartCoroutine(BlinkHint());
-        }
+        if (dialoguePanel != null) dialoguePanel.SetActive(true);
 
         StartCoroutine(TypeLine());
     }
@@ -92,28 +75,19 @@ public class DialogueManager : MonoBehaviour
     void NextLine()
     {
         index++;
-
-        if (index < lines.Length)
-        {
-            StartCoroutine(TypeLine());
-        }
-        else
-        {
-            EndDialogue();
-        }
+        if (index < lines.Length) StartCoroutine(TypeLine());
+        else EndDialogue();
     }
 
     IEnumerator TypeLine()
     {
         isTyping = true;
-
         dialogueText.text = "";
 
         if (speakerText != null)
             speakerText.text = lines[index].speaker;
 
         string content = lines[index].content;
-
         foreach (char c in content)
         {
             dialogueText.text += c;
@@ -123,16 +97,22 @@ public class DialogueManager : MonoBehaviour
         isTyping = false;
     }
 
+    void EndDialogue()
+    {
+        isTalking = false;
+        isTyping = false;
+
+        if (dialoguePanel != null) dialoguePanel.SetActive(false);
+    }
+
     IEnumerator BlinkHint()
     {
         TextMeshProUGUI tmp = continueHint.GetComponent<TextMeshProUGUI>();
         Color color = tmp.color;
 
-        while (isTalking)
+        while (true)
         {
             float t = 0f;
-
-            // 渐隐
             while (t < 1f)
             {
                 t += Time.deltaTime * 0.8f;
@@ -140,10 +120,7 @@ public class DialogueManager : MonoBehaviour
                 tmp.color = color;
                 yield return null;
             }
-
             t = 0f;
-
-            // 渐显
             while (t < 1f)
             {
                 t += Time.deltaTime * 0.8f;
@@ -154,26 +131,9 @@ public class DialogueManager : MonoBehaviour
         }
     }
 
-    void EndDialogue()
+    public IEnumerator DelayDialogue(DialogueLine[] lines, float delay = 0.5f)
     {
-        isTalking = false;
-
-        if (blinkCoroutine != null)
-        {
-            StopCoroutine(blinkCoroutine);
-            blinkCoroutine = null;
-        }
-
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
-
-        if (continueHint != null)
-            continueHint.SetActive(false);
-    }
-
-    public IEnumerator DelayDialogue(DialogueLine[] lines)
-    {
-        yield return new WaitForSeconds(0.5f);
+        yield return new WaitForSeconds(delay);
         StartDialogue(lines);
     }
 }
