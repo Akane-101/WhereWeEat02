@@ -3,8 +3,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-[System.Serializable]
-
 public class Level2EventManager : MonoBehaviour
 {
     public static Level2EventManager Instance;
@@ -14,25 +12,28 @@ public class Level2EventManager : MonoBehaviour
     public float openingDelay = 2f;
 
     [Header("交互物体")]
-    public GameObject interactObject; // 要闪烁的物体
+    public GameObject interactObject;
     public float blinkSpeed = 2f;
 
-    [Header("滑块UI")]
+    [Header("UI")]
     public GameObject sliderPanel;
     public Slider progressSlider;
     public TextMeshProUGUI tipText;
 
-    [Header("提示文字")]
+    [Header("黑幕")]
+    public Image darkOverlay;
+    public float fadeSpeed = 2f;
+
+    [Header("提示")]
     public string[] tips;
     public float tipInterval = 5f;
-    public float tipDisplayTime = 2f;
 
     [Header("对话")]
     public DialogueLine[] tipDialogue;
     public DialogueLine[] resetDialogue;
     public DialogueLine[] finalDialogue;
 
-    [Header("滑块设置")]
+    [Header("进度")]
     public float fillSpeed = 0.5f;
 
     [Header("玩家")]
@@ -40,9 +41,12 @@ public class Level2EventManager : MonoBehaviour
 
     private bool canInteract = false;
     private bool sliderActive = false;
-    private bool isTipActive = false;
 
-    private Coroutine blinkCoroutine;
+    private enum PhaseState { Normal, Tip, Dark }
+    private PhaseState state = PhaseState.Normal;
+
+    private float eatCooldown = 0.2f;
+    private float eatTimer = 0f;
 
     void Awake() => Instance = this;
 
@@ -50,6 +54,8 @@ public class Level2EventManager : MonoBehaviour
     {
         sliderPanel.SetActive(false);
         tipText.gameObject.SetActive(false);
+
+        darkOverlay.gameObject.SetActive(false);
 
         StartCoroutine(StartFlow());
     }
@@ -63,7 +69,6 @@ public class Level2EventManager : MonoBehaviour
         while (DialogueManager.Instance.IsTalking)
             yield return null;
 
-        //  开始闪烁交互物体
         canInteract = true;
         StartCoroutine(BlinkObject());
     }
@@ -82,22 +87,17 @@ public class Level2EventManager : MonoBehaviour
         }
     }
 
-    //  玩家进入触发范围调用
     public void StartInteraction()
     {
         if (!canInteract) return;
 
         canInteract = false;
-
-        // 停止闪烁
         StopAllCoroutines();
+
         interactObject.GetComponent<SpriteRenderer>().color = Color.white;
 
-        // 锁定玩家移动
-        if (player != null)
-            player.enabled = false;
+        player.canMove = false;
 
-        // 显示UI
         sliderPanel.SetActive(true);
         progressSlider.value = 0f;
 
@@ -110,8 +110,26 @@ public class Level2EventManager : MonoBehaviour
     {
         if (!sliderActive) return;
 
-        if (!isTipActive && Input.GetKey(KeyCode.E))
+        eatTimer -= Time.deltaTime;
+
+        if (Input.GetKey(KeyCode.E))
         {
+            if (eatTimer <= 0f)
+            {
+                player.PlayEat();
+                eatTimer = eatCooldown;
+            }
+
+            if (state == PhaseState.Dark)
+            {
+                progressSlider.value = 0f;
+
+                if (resetDialogue.Length > 0)
+                    StartCoroutine(DialogueManager.Instance.DelayDialogue(resetDialogue, 0.3f));
+
+                return;
+            }
+
             progressSlider.value += fillSpeed * Time.deltaTime;
 
             if (progressSlider.value >= 1f)
@@ -120,13 +138,6 @@ public class Level2EventManager : MonoBehaviour
                 sliderPanel.SetActive(false);
                 StartCoroutine(FinalDialogue());
             }
-        }
-        else if (isTipActive && Input.GetKey(KeyCode.E))
-        {
-            progressSlider.value = 0f;
-
-            if (resetDialogue.Length > 0)
-                StartCoroutine(DialogueManager.Instance.DelayDialogue(resetDialogue, 0.3f));
         }
     }
 
@@ -144,36 +155,65 @@ public class Level2EventManager : MonoBehaviour
 
         while (sliderActive)
         {
+            // 提示阶段
+            state = PhaseState.Tip;
+
+            string tip = tips[Random.Range(0, tips.Length)];
+
+            for (int i = 0; i < 3; i++)
+            {
+                tipText.gameObject.SetActive(true);
+                tipText.text = tip;
+
+                yield return new WaitForSeconds(0.25f);
+
+                tipText.gameObject.SetActive(false);
+
+                yield return new WaitForSeconds(0.25f);
+            }
+
+            // 黑幕阶段
+            yield return StartCoroutine(DarkPhase());
+
             yield return new WaitForSeconds(tipInterval);
-
-            isTipActive = true;
-
-            tipText.gameObject.SetActive(true);
-            tipText.text = tips[Random.Range(0, tips.Length)];
-
-            if (blinkCoroutine != null)
-                StopCoroutine(blinkCoroutine);
-
-            blinkCoroutine = StartCoroutine(BlinkText());
-
-            yield return new WaitForSeconds(tipDisplayTime);
-
-            tipText.gameObject.SetActive(false);
-            isTipActive = false;
         }
     }
 
-    IEnumerator BlinkText()
+    IEnumerator DarkPhase()
     {
-        Color color = tipText.color;
+        state = PhaseState.Dark;
 
-        while (tipText.gameObject.activeSelf)
+        darkOverlay.gameObject.SetActive(true); 
+
+        Color color = darkOverlay.color;
+        color.a = 0f;
+        darkOverlay.color = color;
+
+        //  渐入
+        float t = 0f;
+        while (t < 1f)
         {
-            float t = Mathf.PingPong(Time.time * 2f, 1f);
-            color.a = Mathf.Lerp(0.3f, 1f, t);
-            tipText.color = color;
+            t += Time.deltaTime * fadeSpeed;
+            color.a = Mathf.Lerp(0f, 0.6f, t);
+            darkOverlay.color = color;
             yield return null;
         }
+
+        yield return new WaitForSeconds(1.5f);
+
+        // 渐出
+        t = 0f;
+        while (t < 1f)
+        {
+            t += Time.deltaTime * fadeSpeed;
+            color.a = Mathf.Lerp(0.6f, 0f, t);
+            darkOverlay.color = color;
+            yield return null;
+        }
+
+        darkOverlay.gameObject.SetActive(false); // 结束隐藏
+
+        state = PhaseState.Normal;
     }
 
     IEnumerator FinalDialogue()
@@ -185,7 +225,6 @@ public class Level2EventManager : MonoBehaviour
         while (DialogueManager.Instance.IsTalking)
             yield return null;
 
-        if (player != null)
-            player.enabled = true;
+        player.canMove = true;
     }
 }
