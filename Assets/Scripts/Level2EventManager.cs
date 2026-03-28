@@ -30,7 +30,6 @@ public class Level2EventManager : MonoBehaviour
 
     [Header("对话")]
     public DialogueLine[] tipDialogue;
-    public DialogueLine[] resetDialogue;
     public DialogueLine[] finalDialogue;
 
     [Header("进度")]
@@ -39,14 +38,16 @@ public class Level2EventManager : MonoBehaviour
     [Header("玩家")]
     public PlayerController player;
 
+    [Header("猫爪")]
+    public DodgeCat dodgeCat;
+
     private bool canInteract = false;
     private bool sliderActive = false;
 
     private enum PhaseState { Normal, Tip, Dark }
     private PhaseState state = PhaseState.Normal;
 
-    private float eatCooldown = 0.2f;
-    private float eatTimer = 0f;
+    private bool isHoldingE = false;
 
     void Awake() => Instance = this;
 
@@ -54,7 +55,6 @@ public class Level2EventManager : MonoBehaviour
     {
         sliderPanel.SetActive(false);
         tipText.gameObject.SetActive(false);
-
         darkOverlay.gameObject.SetActive(false);
 
         StartCoroutine(StartFlow());
@@ -110,35 +110,48 @@ public class Level2EventManager : MonoBehaviour
     {
         if (!sliderActive) return;
 
-        eatTimer -= Time.deltaTime;
+        if (state == PhaseState.Dark)
+        {
+            StopHold();
+            return;
+        }
 
         if (Input.GetKey(KeyCode.E))
         {
-            if (eatTimer <= 0f)
-            {
-                player.PlayEat();
-                eatTimer = eatCooldown;
-            }
-
-            if (state == PhaseState.Dark)
-            {
-                progressSlider.value = 0f;
-
-                if (resetDialogue.Length > 0)
-                    StartCoroutine(DialogueManager.Instance.DelayDialogue(resetDialogue, 0.3f));
-
-                return;
-            }
+            isHoldingE = true;
+            player.PlayEat();
 
             progressSlider.value += fillSpeed * Time.deltaTime;
 
             if (progressSlider.value >= 1f)
             {
-                sliderActive = false;
-                sliderPanel.SetActive(false);
-                StartCoroutine(FinalDialogue());
+                OnSliderComplete();
             }
         }
+        else
+        {
+            StopHold();
+        }
+    }
+
+    void OnSliderComplete()
+    {
+        sliderActive = false;
+        sliderPanel.SetActive(false);
+        StopHold();
+
+        //  恢复移动
+        player.canMove = true;
+
+        StartCoroutine(FinalDialogue());
+    }
+
+    void StopHold()
+    {
+        if (!isHoldingE) return;
+
+        isHoldingE = false;
+        player.StopEat();
     }
 
     IEnumerator TipRoutine()
@@ -155,7 +168,6 @@ public class Level2EventManager : MonoBehaviour
 
         while (sliderActive)
         {
-            // 提示阶段
             state = PhaseState.Tip;
 
             string tip = tips[Random.Range(0, tips.Length)];
@@ -168,11 +180,9 @@ public class Level2EventManager : MonoBehaviour
                 yield return new WaitForSeconds(0.25f);
 
                 tipText.gameObject.SetActive(false);
-
                 yield return new WaitForSeconds(0.25f);
             }
 
-            // 黑幕阶段
             yield return StartCoroutine(DarkPhase());
 
             yield return new WaitForSeconds(tipInterval);
@@ -183,13 +193,12 @@ public class Level2EventManager : MonoBehaviour
     {
         state = PhaseState.Dark;
 
-        darkOverlay.gameObject.SetActive(true); 
+        darkOverlay.gameObject.SetActive(true);
 
         Color color = darkOverlay.color;
         color.a = 0f;
         darkOverlay.color = color;
 
-        //  渐入
         float t = 0f;
         while (t < 1f)
         {
@@ -201,7 +210,6 @@ public class Level2EventManager : MonoBehaviour
 
         yield return new WaitForSeconds(1.5f);
 
-        // 渐出
         t = 0f;
         while (t < 1f)
         {
@@ -211,7 +219,7 @@ public class Level2EventManager : MonoBehaviour
             yield return null;
         }
 
-        darkOverlay.gameObject.SetActive(false); // 结束隐藏
+        darkOverlay.gameObject.SetActive(false);
 
         state = PhaseState.Normal;
     }
@@ -225,6 +233,6 @@ public class Level2EventManager : MonoBehaviour
         while (DialogueManager.Instance.IsTalking)
             yield return null;
 
-        player.canMove = true;
+        dodgeCat.StartDodge();
     }
 }

@@ -101,4 +101,12 @@ public class PlayerController : MonoBehaviour
         yield return new WaitForSeconds(0.5f);
         isEating = false;
     }
+
+    public void StopEat()
+    {
+        if (animator == null) return;
+
+        animator.SetBool("IsMoving", false);
+        animator.Play("Idle"); // »òÄãµÄIdleÃû×Ö
+    }
 }
